@@ -59,6 +59,35 @@ struct RegexImpl {
     std::vector<std::string> groupNames; // parallel to group numbers where known
 };
 
+// Unicode-aware string helpers (C# ToLower/ToUpper/Trim are culture/Unicode
+// aware; NSString's equivalents behave the same way)
+static NSString* HelperToNS(const std::string& s) {
+    NSString* out = [[NSString alloc] initWithBytes:s.data()
+                                             length:s.size()
+                                           encoding:NSUTF8StringEncoding];
+    return out ?: @"";
+}
+std::string StrToLower(const std::string& s) {
+    @autoreleasepool {
+        const char* c = [[HelperToNS(s) lowercaseString] UTF8String];
+        return c ? std::string(c) : s;
+    }
+}
+std::string StrToUpper(const std::string& s) {
+    @autoreleasepool {
+        const char* c = [[HelperToNS(s) uppercaseString] UTF8String];
+        return c ? std::string(c) : s;
+    }
+}
+std::string StrTrim(const std::string& s) {
+    @autoreleasepool {
+        NSString* trimmed = [HelperToNS(s)
+            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        const char* c = [trimmed UTF8String];
+        return c ? std::string(c) : s;
+    }
+}
+
 // Scan an ICU pattern for named groups "(?<name>" (not lookbehind "(?<=" / "(?<!").
 static std::vector<std::string> ScanGroupNames(const std::string& pattern) {
     std::vector<std::string> names;
@@ -116,12 +145,19 @@ struct Utf16ToUtf8Map {
 Regex::Regex(const std::string& pattern, bool ignoreCase, bool multiline)
     : impl_(nullptr), pattern_(pattern), ignoreCase_(ignoreCase) {
     @autoreleasepool {
-        NSRegularExpressionOptions opts = 0;
+        // UseUnixLineSeparators matches .NET: '^'/'$' (Multiline) only
+        // recognize '\n', and '.' excludes only '\n' (so "\r?$" can consume a
+        // '\r'; ICU's default treats "\r\n" as one terminator and '$' lands
+        // before the pair)
+        NSRegularExpressionOptions opts = NSRegularExpressionUseUnixLineSeparators;
         if (ignoreCase) opts |= NSRegularExpressionCaseInsensitive;
         if (multiline) opts |= NSRegularExpressionAnchorsMatchLines;
         NSError* err = nil;
+        // ICU rejects an empty pattern; .NET's empty pattern matches the
+        // empty string at every position, which "(?:)" reproduces
+        NSString* nsPattern = pattern.empty() ? @"(?:)" : ToNS(pattern);
         NSRegularExpression* re =
-            [NSRegularExpression regularExpressionWithPattern:ToNS(pattern) options:opts error:&err];
+            [NSRegularExpression regularExpressionWithPattern:nsPattern options:opts error:&err];
         if (!re) {
             std::string msg = "invalid regular expression: " + pattern;
             if (err) msg += std::string(" (") + FromNS(err.localizedDescription) + ")";
@@ -186,8 +222,15 @@ Regex::Match Regex::FirstMatch(const std::string& s, int64_t startAt) const {
             while (start16 < map.map.size() && map.map[start16] < startAt) start16++;
         }
         NSRegularExpression* re = static_cast<RegexImpl*>(impl_)->re;
+        // .NET Regex.Match(s, startat) anchors \A/^ to the TRUE text start and
+        // lets lookbehind see before startat. ICU's default region bounds
+        // treat the region start as an anchor, so disable anchoring bounds
+        // and enable transparent bounds when searching from an offset.
+        NSMatchingOptions mopts = 0;
+        if (start16 > 0)
+            mopts = NSMatchingWithTransparentBounds | NSMatchingWithoutAnchoringBounds;
         NSTextCheckingResult* m =
-            [re firstMatchInString:ns options:0 range:NSMakeRange(start16, ns.length - start16)];
+            [re firstMatchInString:ns options:mopts range:NSMakeRange(start16, ns.length - start16)];
         Match out;
         if (!m) return out;
         out = BuildMatch(m, ns, map, s);

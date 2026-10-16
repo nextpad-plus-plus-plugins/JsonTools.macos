@@ -1117,10 +1117,8 @@ std::string JArray::ToJsonLines(bool sortKeys, const std::string& keyValueSep,
 
 // ── JMutator ───────────────────────────────────────────────────────────────
 JNodePtr JMutator::Operate(JNodePtr inp) {
-    JNodePtr selected = selector->CanOperate() && selector->type != DT_OBJ && selector->type != DT_ARR
-                            && dynamic_cast<CurJson*>(selector.get())
-        ? static_cast<CurJson*>(selector.get())->function(inp)
-        : selector;
+    CurJson* cjsel = dynamic_cast<CurJson*>(selector.get());
+    JNodePtr selected = cjsel ? cjsel->function(inp) : selector;
     CurJson* cjmut = dynamic_cast<CurJson*>(mutator.get());
     if (cjmut) {
         auto& func = cjmut->function;
@@ -1176,6 +1174,9 @@ JNodePtr JQueryContext::Operate(JNodePtr inp) {
 }
 
 bool JQueryContext::IsSimpleQuery() const {
+    // C# indexes statements[0] unguarded and throws IndexOutOfRange on a
+    // query with no statements (e.g. comments only); throw the equivalent
+    if (statements_.empty()) throw JsonToolsError("Empty query");
     if (statements_.size() > 1) return false;
     return dynamic_cast<VarAssign*>(statements_[0].get()) == nullptr;
 }
