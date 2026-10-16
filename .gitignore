@@ -1,4 +1,6 @@
 build/
 build-*/
 dist/
+test/
+testfiles/
 .DS_Store

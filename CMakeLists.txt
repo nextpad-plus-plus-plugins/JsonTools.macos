@@ -49,11 +49,15 @@ target_link_options(JsonTools PRIVATE "-Wl,-current_version,${PROJECT_VERSION}")
 set(PLUGIN_INSTALL_DIR "$ENV{HOME}/Library/Application Support/Nextpad++/plugins/JsonTools")
 install(TARGETS JsonTools DESTINATION "${PLUGIN_INSTALL_DIR}")
 
-# Engine unit tests (host-arch only, not part of the plugin)
-add_executable(engine_test EXCLUDE_FROM_ALL
-    test/engine_test.cpp
-    ${ENGINE_SOURCES})
-target_include_directories(engine_test PRIVATE src/engine test)
-target_link_libraries(engine_test PRIVATE "-framework Foundation")
-target_compile_options(engine_test PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
-set_target_properties(engine_test PROPERTIES OSX_ARCHITECTURES "")
+# Engine unit tests (host-arch only, not part of the plugin). The test suite
+# lives only in the local working copy (test/ is untracked), so guard the
+# target or a public clone would fail to configure.
+if(EXISTS "${CMAKE_SOURCE_DIR}/test/engine_test.cpp")
+    add_executable(engine_test EXCLUDE_FROM_ALL
+        test/engine_test.cpp
+        ${ENGINE_SOURCES})
+    target_include_directories(engine_test PRIVATE src/engine test)
+    target_link_libraries(engine_test PRIVATE "-framework Foundation")
+    target_compile_options(engine_test PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>)
+    set_target_properties(engine_test PROPERTIES OSX_ARCHITECTURES "")
+endif()
