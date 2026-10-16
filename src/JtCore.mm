@@ -40,6 +40,10 @@ static IniFileParser sIniParser;
 static RemesParser sRemesParser;
 static YamlDumper sYamlDumper;
 static std::map<uintptr_t, std::string> sJsonFilesRenamed;
+// bufferId → fname, maintained on NPPN_BUFFERACTIVATED: NPPN_FILECLOSED
+// arrives after the host can no longer resolve the id to a path (and buffer
+// ids must never be retained past that notification — pointer use only)
+static std::map<uintptr_t, std::string> sBufferIdToFname;
 static bool sShouldRenameGrepperForm = false;
 static bool sHasWarnedSelectionsForgotten = false;
 static bool sBufferFinishedOpening = false;
@@ -222,6 +226,12 @@ ParseResult TryParseJson(DocumentType documentType, bool wasAutotriggered,
     int64_t len = DocLength();
     JsonParser jsonParser = JsonParserFromSettings();
     std::string fname = GetCurrentFilePath();
+    // keep activeFname in sync even when no NPPN_BUFFERACTIVATED reached us
+    // yet: at startup the session's tabs are restored BEFORE plugins load, so
+    // the first command of the session (incl. the host's panel-restore replay
+    // of "Open JSON tree viewer") would otherwise look up info under "" and
+    // silently no-op
+    activeFname = fname;
     auto selRanges = GetSelectedRanges();
     std::vector<std::string> oldSelections;
     auto firstSel = selRanges[0];
@@ -1236,6 +1246,7 @@ void OnBufferActivated(uintptr_t bufferId) {
     sBufferFinishedOpening = true;
     RefreshCurrentScintilla();
     std::string newFname = GetFilePathFromBufferId(bufferId);
+    if (!newFname.empty()) sBufferIdToFname[bufferId] = newFname;
     JsonFileInfo* newInfo = nullptr;
     bool newFileHasInfo = TryGetInfoForFile(newFname, &newInfo);
     if (newFileHasInfo) {
@@ -1284,8 +1295,16 @@ void OnBufferActivated(uintptr_t bufferId) {
         SetStatusBarSection(newInfo->statusBarSection);
 }
 
-void OnFileBeforeClose(uintptr_t bufferId) {
-    std::string bufferClosed = GetFilePathFromBufferId(bufferId);
+void OnFileClosed(uintptr_t bufferId) {
+    std::string bufferClosed;
+    auto mapIt = sBufferIdToFname.find(bufferId);
+    if (mapIt != sBufferIdToFname.end()) {
+        bufferClosed = mapIt->second;
+        sBufferIdToFname.erase(mapIt);
+    } else {
+        bufferClosed = GetFilePathFromBufferId(bufferId); // best effort
+    }
+    if (bufferClosed.empty()) return;
     JsonFileInfo* closedInfo = nullptr;
     if (TryGetInfoForFile(bufferClosed, &closedInfo)) {
         if (openTreeViewer && openTreeViewer == closedInfo->tv) openTreeViewer = nil;

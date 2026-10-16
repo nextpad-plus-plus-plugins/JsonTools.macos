@@ -118,7 +118,9 @@ void DisplayJsonTree(JTTreeViewer* treeViewer, const JNodePtr& json, const std::
 void OnReady();
 void OnBufferActivated(uintptr_t bufferId);
 void OnFileBeforeOpen();
-void OnFileBeforeClose(uintptr_t bufferId);
+// the host emits NPPN_FILECLOSED (not FILEBEFORECLOSE); the editor is already
+// out of the tab list by then, so the fname comes from our own id→fname map
+void OnFileClosed(uintptr_t bufferId);
 void OnFileBeforeRenameOrSave(uintptr_t bufferId);
 void OnFileRenamedOrSaved(uintptr_t bufferId);
 void OnFileRenameCancel(uintptr_t bufferId);

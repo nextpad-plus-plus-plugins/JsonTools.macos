@@ -153,8 +153,8 @@ extern "C" NPP_EXPORT void beNotified(SCNotification* n) {
             OnBufferActivated((uintptr_t)n->nmhdr.idFrom);
             break;
 
-        case NPPN_FILEBEFORECLOSE:
-            OnFileBeforeClose((uintptr_t)n->nmhdr.idFrom);
+        case NPPN_FILECLOSED: // this host sends FILECLOSED, not FILEBEFORECLOSE
+            OnFileClosed((uintptr_t)n->nmhdr.idFrom);
             break;
 
         case NPPN_WORDSTYLESUPDATED:
