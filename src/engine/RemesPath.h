@@ -115,6 +115,18 @@ public:
         map_.emplace(key, std::make_pair(val, last));
     }
     void Clear() { map_.clear(); useOrder_.clear(); }
+    bool ContainsKey(const K& key) const { return map_.count(key) > 0; }
+    bool IsFull() const { return map_.size() >= capacity_; }
+    size_t Count() const { return map_.size(); }
+    size_t UseOrderCount() const { return useOrder_.size(); }
+    size_t Capacity() const { return capacity_; }
+    // the least recently used key; only valid when Count() > 0
+    const K& OldestKey() const { return useOrder_.front(); }
+    bool UseOrderContains(const K& key) const {
+        for (const K& k : useOrder_)
+            if (k == key) return true;
+        return false;
+    }
 
 private:
     size_t capacity_;
